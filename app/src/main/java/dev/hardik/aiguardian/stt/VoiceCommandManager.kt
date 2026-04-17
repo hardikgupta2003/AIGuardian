@@ -50,8 +50,8 @@ class VoiceCommandManager @Inject constructor(
         monitoringJob = scope.launch {
             val buffer = ByteArray(bufferSize)
             launch {
-                sttEngine.transcriptionFlow.collect { transcription ->
-                    checkHotwords(transcription)
+                sttEngine.transcriptionFlow.collect { segment ->
+                    checkHotwords(segment.text)
                 }
             }
             

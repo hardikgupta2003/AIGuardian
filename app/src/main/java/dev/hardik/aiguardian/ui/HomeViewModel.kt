@@ -14,7 +14,7 @@ import javax.inject.Inject
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val sosManager: SOSManager,
-    scamDetector: ScamDetector
+    private val scamDetector: ScamDetector
 ) : ViewModel() {
 
     val protectionState: StateFlow<ScamProtectionState> = scamDetector.protectionState

@@ -9,19 +9,9 @@ import android.view.View
 import android.view.WindowManager
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.weight
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CallEnd
-import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -204,22 +194,22 @@ class OverlayManager @Inject constructor(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Button(
-                        onClick = onMute,
+                        onClick = { onMute() },
                         colors = ButtonDefaults.buttonColors(containerColor = Color.White),
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Icon(Icons.Default.MicOff, contentDescription = null, tint = Color(0xFFB91C1C))
+                        Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFB91C1C))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Mute", color = Color(0xFFB91C1C), fontWeight = FontWeight.Bold)
                     }
                     Button(
-                        onClick = onHangUp,
+                        onClick = { onHangUp() },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B0B0B)),
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Icon(Icons.Default.CallEnd, contentDescription = null, tint = Color.White)
+                        Icon(Icons.Default.Warning, contentDescription = null, tint = Color.White)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("End", color = Color.White, fontWeight = FontWeight.Bold)
                     }

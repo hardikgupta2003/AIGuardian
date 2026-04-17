@@ -22,9 +22,15 @@ class HomeViewModel @Inject constructor(
 
     val protectionState: StateFlow<ScamProtectionState> = combine(
         scamDetector.protectionState,
-        sttEngine.isModelReady
-    ) { state, modelReady ->
-        state.copy(modelReady = modelReady)
+        sttEngine.isModelReady,
+        sttEngine.isInitializing,
+        sttEngine.errorMessage
+    ) { state, modelReady, initializing, error ->
+        state.copy(
+            modelReady = modelReady,
+            isPreparingModel = initializing,
+            modelError = error
+        )
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),

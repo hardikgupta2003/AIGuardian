@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -188,8 +189,13 @@ private fun LiveProtectionPanel(
                         fontSize = 20.sp
                     )
                     Text(
-                        text = if (state.modelReady) "Offline speech model ready" else "Waiting for offline speech model",
-                        color = Color.White.copy(alpha = 0.72f),
+                        text = when {
+                            state.modelError != null -> state.modelError!!
+                            state.modelReady -> "Offline speech model ready"
+                            state.isPreparingModel -> "Preparing speech model..."
+                            else -> "Waiting for speech model"
+                        },
+                        color = if (state.modelError != null) Color(0xFFFFB3B3) else Color.White.copy(alpha = 0.72f),
                         fontSize = 13.sp
                     )
                 }
@@ -218,6 +224,23 @@ private fun LiveProtectionPanel(
                 fontSize = 14.sp,
                 lineHeight = 20.sp
             )
+            
+            if (state.isMonitoring) {
+                Surface(
+                    color = Color(0xFF4ECCA3).copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "💡 Tip: Turn on Speakerphone so AI can hear the caller.",
+                        color = Color(0xFF4ECCA3),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(12.dp),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
             if (!isCallProtectionEnabled) {
                 Button(
                     onClick = onEnableCallProtection,

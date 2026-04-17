@@ -16,7 +16,8 @@ This project targets modern Android devices and currently builds with:
 - Sends emergency SMS with current location link
 - Logs SOS events to Firebase Realtime Database
 - Runs a foreground safety service for location monitoring
-- Starts in-call audio capture through `InCallService`
+- Detects calls intelligently using `PhoneStateListener` (No Default Dialer required!)
+- Starts in-call audio capture and analysis automatically on call start
 - Stores scam detection history locally with Room
 - Stores medicine reminders locally
 - Shows spoken medicine reminders through Text-to-Speech
@@ -25,11 +26,11 @@ This project targets modern Android devices and currently builds with:
 
 The app is functional as a development project, but a few parts are still incomplete or device-dependent:
 
-- Scam monitoring depends on Android telephony/in-call behavior and device permissions
-- Microphone capture is now isolated to the dedicated call-audio service
-- Medicine reminders are saved to the database, but scheduling is not automatically wired from the add flow yet
-- Emergency contacts are not yet managed from the UI and must be set in code
-- Scam transcription/detection flow is scaffolded, but the STT chunk processing logic is currently commented out
+- Scam monitoring uses `PhoneStateListener` to auto-trigger analysis (Speakerphone required for mic access).
+- Microphone capture is isolated to a dedicated high-priority foreground service.
+- Medicine reminders are saved to the database, but scheduling is not automatically wired from the add flow yet.
+- Emergency contacts are not yet managed from the UI and must be set in code.
+- **Transfers and Analysis**: Real-time STT analysis is active and logs events to `AIGuardianDebug`.
 
 So: this is a solid base app and demo project, but not yet a fully polished production build.
 
@@ -144,6 +145,9 @@ The app requests or declares these permissions:
 - `READ_CONTACTS`
 - `POST_NOTIFICATIONS`
 
+### Important Security Note:
+Monitoring caller audio on Android is restricted. The app uses the **Speakerphone Method**: When a call is active, you must turn on the **Speakerphone** button on your dialer so the AI can "hear" the caller via the microphone.
+
 Important notes:
 
 - On Android 13+, notification permission must be granted manually
@@ -244,22 +248,16 @@ Relevant files:
 
 The project includes:
 
-- `ScamInCallService` for telecom call callbacks
-- `AudioCaptureService` for microphone foreground capture during a call
+- `AIGuardianService` uses `PhoneStateListener` for zero-configuration call detection.
+- `AudioCaptureService` handles microphone foreground capture during a active calls.
 
-How it is intended to work:
-
-1. Android binds the app's `InCallService`
-2. When a call becomes active, the app starts `AudioCaptureService`
-3. Audio chunks go to the STT engine
-4. Transcriptions can be analyzed for scam keywords/patterns
-5. Scam events can be stored in Room and shown in the log screen
-
-Important:
-
-- This behavior is heavily restricted by Android and OEM phone apps
-- It may require enabling the app as the default calling assistant or default phone-related service depending on device behavior
-- Not all devices allow third-party apps to capture call audio in practice
+How it works:
+1. `AIGuardianService` detects an incoming or outgoing call via `TelephonyManager`.
+2. It immediately starts `AudioCaptureService` and displays an overlay instruction.
+3. User turns on **Speakerphone**.
+4. Audio chunks go to the Vosk STT engine.
+5. Transcriptions are analyzed for scam keywords (e.g., "IRS", "Gift Card", "Bank").
+6. If a threat is found, a high-visibility **Scam Alert Overlay** appears over the call.
 
 Relevant files:
 
@@ -288,6 +286,19 @@ APK build:
 ```powershell
 .\gradlew.bat :app:assembleDebug
 ```
+
+## Debugging (Forensic Logs)
+
+All application telemetry is consolidated under a single Logcat tag for easy troubleshooting.
+
+**Tag: `AIGuardianDebug`**
+
+Filter by this tag in Android Studio to track the life of a call:
+1. `APPLICATION_START`: App is initializing.
+2. `CALL_STATE`: Confirming the phone state change (Ringing/Offhook).
+3. `PIPELINE`: Confirming the STT engine and audio capture have started.
+4. `STT_RESULT`: Real-time text output from the AI.
+5. `DETECTION`: Scam analysis results and alert triggers.
 
 ## Troubleshooting
 

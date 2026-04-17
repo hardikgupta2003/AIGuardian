@@ -12,6 +12,7 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import dev.hardik.aiguardian.R
 import dev.hardik.aiguardian.stt.VoskSTTEngine
@@ -59,6 +60,7 @@ class AudioCaptureService : Service() {
 
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        android.util.Log.d("AIGuardianDebug", "SERVICE_START: AudioCaptureService.onStartCommand")
         startRecording()
         return START_NOT_STICKY
     }
@@ -67,6 +69,7 @@ class AudioCaptureService : Service() {
     private fun startRecording() {
         if (isRecording) return
         
+        android.util.Log.d("AIGuardianDebug", "PIPELINE: Initializing AudioRecord")
         val bufferSize = AudioRecord.getMinBufferSize(
             16000,
             AudioFormat.CHANNEL_IN_MONO,
@@ -81,30 +84,57 @@ class AudioCaptureService : Service() {
             bufferSize
         )
 
-        audioRecord?.startRecording()
+        if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
+            android.util.Log.e("AIGuardianDebug", "PIPELINE_ERROR: AudioRecord failed to initialize")
+            stopSelf()
+            return
+        }
+
+        try {
+            audioRecord?.startRecording()
+            android.util.Log.i("AIGuardianDebug", "PIPELINE: AudioRecord started recording")
+        } catch (e: Exception) {
+            android.util.Log.e("AIGuardianDebug", "PIPELINE_ERROR: Failed to start AudioRecord: ${e.message}")
+            stopSelf()
+            return
+        }
+
         isRecording = true
         sttEngine.startRecognition()
         scamDetector.startMonitoring()
 
         recordingJob = serviceScope.launch {
             val buffer = ByteArray(bufferSize)
+            var lastLogTime = 0L
             while (isRecording) {
                 val read = audioRecord?.read(buffer, 0, buffer.size) ?: 0
                 if (read > 0) {
                     sttEngine.processAudioChunk(buffer, read)
+                    
+                    val now = System.currentTimeMillis()
+                    if (now - lastLogTime > 3000) {
+                        android.util.Log.d("AIGuardianDebug", "PIPELINE_HEARTBEAT: Reading audio chunks...")
+                        lastLogTime = now
+                    }
+                } else if (read < 0) {
+                    android.util.Log.e("AIGuardianDebug", "PIPELINE_ERROR: Read error: $read")
                 }
             }
         }
     }
 
     private fun stopRecording() {
+        if (!isRecording) return
         isRecording = false
         recordingJob?.cancel()
-        runCatching { audioRecord?.stop() }
-        audioRecord?.release()
+        runCatching {
+            audioRecord?.stop()
+            audioRecord?.release()
+        }
         audioRecord = null
         sttEngine.stopRecognition()
         scamDetector.stopMonitoring()
+        Log.d("AudioCaptureService", "Recording pipeline stopped")
     }
 
 
@@ -116,7 +146,7 @@ class AudioCaptureService : Service() {
     private fun createNotification(): Notification {
         return NotificationCompat.Builder(this, Constants.CHANNEL_ID)
             .setContentTitle("Call Monitoring Active")
-            .setContentText("Scanning for potential scams")
+            .setContentText("Listening via speakerphone for safety")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)

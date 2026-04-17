@@ -1,5 +1,6 @@
 package dev.hardik.aiguardian.detection
 
+import android.util.Log
 import dev.hardik.aiguardian.data.model.ScamEvent
 import dev.hardik.aiguardian.data.repository.SafetyRepository
 import dev.hardik.aiguardian.stt.VoskSTTEngine
@@ -13,6 +14,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 @Singleton
@@ -77,6 +79,7 @@ class ScamDetector @Inject constructor(
 
         val windowText = rollingSegments.joinToString(" ") { it.text }.trim()
         val analysis = analyzer.analyze(windowText)
+        android.util.Log.d("ScamDetector", "Analysis - Score: ${analysis.score}, Level: ${analysis.level}, Reasons: ${analysis.reasons}")
 
         _protectionState.value = ScamProtectionState(
             isMonitoring = true,
@@ -85,26 +88,49 @@ class ScamDetector @Inject constructor(
             lastTranscript = segment.text,
             score = analysis.score,
             level = analysis.level,
-            reasons = analysis.reasons,
-            severeActionTaken = severeActionTaken,
-            lastUpdateMs = segment.timestampMs
         )
+        Log.d("AIGuardianDebug", "DETECTION: Score=${analysis.score} | Level=${analysis.level} | Reasons=${analysis.reasons}")
+
+        _protectionState.update { state ->
+            state.copy(
+                isMonitoring = true,
+                modelReady = sttEngine.isModelReady.value,
+                activePhoneNumber = activePhoneNumber,
+                lastTranscript = segment.text,
+                score = analysis.score,
+                level = analysis.level,
+                reasons = analysis.reasons,
+                severeActionTaken = severeActionTaken,
+                lastUpdateMs = segment.timestampMs
+            )
+        }
 
         if (analysis.level == ThreatLevel.SEVERE || analysis.level == ThreatLevel.HIGH) {
             maybePersistDetection(analysis, segment.timestampMs)
-        }
-
-        if (analysis.level == ThreatLevel.SEVERE && !severeActionTaken) {
-            severeActionTaken = callInterventionManager.muteCaller()
-            _protectionState.value = _protectionState.value.copy(severeActionTaken = severeActionTaken)
+            android.util.Log.w("AIGuardianDebug", "DETECTION: !!! High/Severe Threat Detected - Showing Alert UI !!!")
+            
             scope.launch {
                 overlayManager.showScamAlert(
                     state = _protectionState.value,
-                    onMute = { callInterventionManager.muteCaller() },
-                    onHangUp = { callInterventionManager.endCall() },
-                    onDismiss = {}
+                    onMute = { 
+                        android.util.Log.i("AIGuardianDebug", "USER_ACTION: Clicked MUTE in Alert UI")
+                        callInterventionManager.muteCaller() 
+                    },
+                    onHangUp = { 
+                        android.util.Log.i("AIGuardianDebug", "USER_ACTION: Clicked HANGUP in Alert UI")
+                        callInterventionManager.endCall() 
+                    },
+                    onDismiss = {
+                        android.util.Log.d("AIGuardianDebug", "USER_ACTION: Dismissed Alert UI")
+                    }
                 )
             }
+        }
+
+        if (analysis.level == ThreatLevel.SEVERE && !severeActionTaken) {
+            android.util.Log.w("AIGuardianDebug", "DETECTION: SEVERE level reached - Executing Auto-Intervention")
+            severeActionTaken = callInterventionManager.muteCaller()
+            _protectionState.value = _protectionState.value.copy(severeActionTaken = severeActionTaken)
         }
     }
 

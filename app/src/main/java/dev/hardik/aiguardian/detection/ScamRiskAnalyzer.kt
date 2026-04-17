@@ -23,6 +23,8 @@ data class ScamAnalysis(
 data class ScamProtectionState(
     val isMonitoring: Boolean = false,
     val modelReady: Boolean = false,
+    val isPreparingModel: Boolean = false,
+    val modelError: String? = null,
     val activePhoneNumber: String = "No active call",
     val lastTranscript: String = "Waiting for speech…",
     val score: Int = 0,

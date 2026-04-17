@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -12,6 +13,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -53,14 +55,79 @@ class OverlayManager @Inject constructor(
     private var windowManager: WindowManager? = null
     private var overlayView: View? = null
 
+    private fun setupComposeOverlay(composeView: ComposeView) {
+        val lifecycleOwner = MyLifecycleOwner()
+        lifecycleOwner.performRestore(null)
+        lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+        lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_START)
+        lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+        
+        composeView.setViewTreeLifecycleOwner(lifecycleOwner)
+        composeView.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+        composeView.setViewTreeViewModelStoreOwner(object : ViewModelStoreOwner {
+            override val viewModelStore: ViewModelStore = ViewModelStore()
+        })
+    }
+
+    fun showCallStartInstruction(onDismiss: () -> Unit) {
+        if (overlayView != null) {
+            android.util.Log.d("AIGuardianDebug", "OVERLAY: showCallStartInstruction skipped (Existing overlay)")
+            return
+        }
+
+        android.util.Log.i("AIGuardianDebug", "OVERLAY: showCallStartInstruction starting...")
+        windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) 
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY 
+            else 
+                WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP
+            y = 100
+        }
+
+        val composeView = ComposeView(context).apply {
+            setContent {
+                AIGuardianTheme {
+                    CallStartInstructionUI(
+                        onDismiss = {
+                            android.util.Log.d("AIGuardianDebug", "OVERLAY: User dismissed speakerphone instruction")
+                            removeOverlay()
+                            onDismiss()
+                        }
+                    )
+                }
+            }
+        }
+
+        setupComposeOverlay(composeView)
+        overlayView = composeView
+        try {
+            android.util.Log.i("AIGuardianDebug", "OVERLAY: WindowManager.addView (Instruction)")
+            windowManager?.addView(overlayView, params)
+        } catch (e: Exception) {
+            android.util.Log.e("AIGuardianDebug", "OVERLAY_ERROR: Failed to add instruction: ${e.message}")
+        }
+    }
+
     fun showScamAlert(
         state: ScamProtectionState,
         onMute: () -> Boolean,
         onHangUp: () -> Boolean,
         onDismiss: () -> Unit
     ) {
-        if (overlayView != null) return
+        if (overlayView != null) {
+            android.util.Log.d("AIGuardianDebug", "OVERLAY: Removing existing overlay for ScamAlert")
+            removeOverlay()
+        }
 
+        android.util.Log.w("AIGuardianDebug", "OVERLAY: showScamAlert starting...")
         windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         
         val params = WindowManager.LayoutParams(
@@ -82,10 +149,20 @@ class OverlayManager @Inject constructor(
                 AIGuardianTheme {
                     ScamAlertUI(
                         state = state,
-                        onOpenDashboard = { openDashboard() },
-                        onMute = onMute,
-                        onHangUp = onHangUp,
+                        onOpenDashboard = { 
+                            android.util.Log.d("AIGuardianDebug", "OVERLAY: User clicked Open Dashboard")
+                            openDashboard() 
+                        },
+                        onMute = {
+                            android.util.Log.i("AIGuardianDebug", "OVERLAY: User clicked MUTE")
+                            onMute()
+                        },
+                        onHangUp = {
+                            android.util.Log.i("AIGuardianDebug", "OVERLAY: User clicked HANGUP")
+                            onHangUp()
+                        },
                         onDismiss = {
+                            android.util.Log.d("AIGuardianDebug", "OVERLAY: User dismissed Scam Alert")
                             removeOverlay()
                             onDismiss()
                         }
@@ -94,21 +171,14 @@ class OverlayManager @Inject constructor(
             }
         }
 
-        // Custom lifecycle for ComposeView in WindowManager
-        val lifecycleOwner = MyLifecycleOwner()
-        lifecycleOwner.performRestore(null)
-        lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
-        lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_START)
-        lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
-        
-        composeView.setViewTreeLifecycleOwner(lifecycleOwner)
-        composeView.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
-        composeView.setViewTreeViewModelStoreOwner(object : ViewModelStoreOwner {
-            override val viewModelStore: ViewModelStore = ViewModelStore()
-        })
-
+        setupComposeOverlay(composeView)
         overlayView = composeView
-        windowManager?.addView(overlayView, params)
+        try {
+            android.util.Log.i("AIGuardianDebug", "OVERLAY: WindowManager.addView (ScamAlert)")
+            windowManager?.addView(overlayView, params)
+        } catch (e: Exception) {
+            android.util.Log.e("AIGuardianDebug", "OVERLAY_ERROR: Failed to add alert: ${e.message}")
+        }
     }
 
     private fun openDashboard() {
@@ -120,8 +190,66 @@ class OverlayManager @Inject constructor(
 
     private fun removeOverlay() {
         overlayView?.let {
-            windowManager?.removeView(it)
+            android.util.Log.d("AIGuardianDebug", "OVERLAY: removeOverlay")
+            try {
+                windowManager?.removeView(it)
+            } catch (e: Exception) {
+                android.util.Log.e("AIGuardianDebug", "OVERLAY_ERROR: Failed to remove overlay: ${e.message}")
+            }
             overlayView = null
+        }
+    }
+
+    @Composable
+    private fun CallStartInstructionUI(
+        onDismiss: () -> Unit
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            shape = RoundedCornerShape(24.dp),
+            color = Color.Transparent
+        ) {
+            Column(
+                modifier = Modifier
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(Color(0xFF4ECCA3), Color(0xFF16213E))
+                        )
+                    )
+                    .padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Notifications,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(32.dp)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "AI Protection Active",
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Please tap 'Speaker' to start scam analysis.",
+                    color = Color.White.copy(alpha = 0.9f),
+                    fontSize = 16.sp,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.2f)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("OK", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
 

@@ -14,10 +14,11 @@ class AIGuardianApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        android.util.Log.i("AIGuardianDebug", "APPLICATION_START: AIGuardianApp created")
+        
         // Initialize Vosk model (English by default)
-        // Note: Model files must be in assets/model-en-us
         sttEngine.initModel("model-en-us") { success ->
-            // Model loaded
+            android.util.Log.i("AIGuardianDebug", "STT_INIT: Model initialization result: $success")
         }
     }
 }

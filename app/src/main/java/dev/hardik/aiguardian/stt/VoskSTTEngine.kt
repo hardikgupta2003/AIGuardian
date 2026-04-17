@@ -27,22 +27,40 @@ class VoskSTTEngine @Inject constructor(
     private val _isModelReady = MutableStateFlow(false)
     val isModelReady: StateFlow<Boolean> = _isModelReady.asStateFlow()
 
+    private val _isInitializing = MutableStateFlow(false)
+    val isInitializing: StateFlow<Boolean> = _isInitializing.asStateFlow()
+
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
     private val _transcriptionFlow = MutableSharedFlow<TranscriptSegment>(extraBufferCapacity = 16)
     val transcriptionFlow = _transcriptionFlow.asSharedFlow()
 
     fun initModel(modelPath: String = "model-en-us", onComplete: (Boolean) -> Unit) {
+        if (_isModelReady.value) {
+            onComplete(true)
+            return
+        }
+        
+        Log.d("AIGuardianDebug", "STT: Initializing model from assets: $modelPath")
+        _isInitializing.value = true
+        _errorMessage.value = null
+        
         StorageService.unpack(
             context,
             modelPath,
             "model",
             { model: Model ->
+                android.util.Log.i("AIGuardianDebug", "STT: Model unpacked successfully")
                 this.model = model
                 _isModelReady.value = true
+                _isInitializing.value = false
                 onComplete(true)
             },
             { exception: IOException ->
-                Log.e("VoskSTTEngine", "Failed to unpack model", exception)
-                _isModelReady.value = false
+                android.util.Log.e("AIGuardianDebug", "STT_ERROR: Failed to unpack model: ${exception.message}")
+                _isInitializing.value = false
+                _errorMessage.value = "Failed to load speech model: ${exception.message}"
                 onComplete(false)
             }
         )
@@ -52,7 +70,7 @@ class VoskSTTEngine @Inject constructor(
         model?.let {
             recognizer = Recognizer(it, 16000.0f)
             lastPartial = ""
-            Log.d("VoskSTTEngine", "Recognizer started")
+            android.util.Log.d("AIGuardianDebug", "STT: Recognizer started")
         }
     }
 
@@ -76,6 +94,7 @@ class VoskSTTEngine @Inject constructor(
         recognizer?.close()
         recognizer = null
         lastPartial = ""
+        android.util.Log.d("AIGuardianDebug", "STT: Recognizer stopped")
     }
 
     private suspend fun emitTranscript(rawJson: String, isFinal: Boolean) {
@@ -85,11 +104,12 @@ class VoskSTTEngine @Inject constructor(
 
         if (isFinal) {
             lastPartial = ""
+            android.util.Log.i("AIGuardianDebug", "STT_RESULT: >>> FINAL TRANSCRIPT: $text")
         } else {
             lastPartial = text
+            android.util.Log.v("AIGuardianDebug", "STT_RESULT: Partial: $text")
         }
 
-        Log.d("VoskSTTEngine", if (isFinal) "Final transcript: $text" else "Partial transcript: $text")
         _transcriptionFlow.emit(TranscriptSegment(text = text, isFinal = isFinal))
     }
 

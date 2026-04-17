@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,6 +26,10 @@ import dev.hardik.aiguardian.stt.VoskSTTEngine
 import dev.hardik.aiguardian.webrtc.WebRTCManager
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import android.media.AudioManager
+import android.media.ToneGenerator
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.lifecycleScope
 import javax.inject.Inject
 
@@ -98,7 +103,28 @@ class IncomingCallActivity : ComponentActivity() {
         var isCallActive by remember { mutableStateOf(false) }
         var transcriptions by remember { mutableStateOf(listOf<String>()) }
         var scamThreatLevel by remember { mutableStateOf("SAFE") }
+        var showScamAlert by remember { mutableStateOf(false) }
         val coroutineScope = rememberCoroutineScope()
+
+        LaunchedEffect(scamThreatLevel) {
+            if (scamThreatLevel == "CAUTION" || scamThreatLevel == "HIGH" || scamThreatLevel == "SEVERE") {
+                if (!showScamAlert) {
+                    showScamAlert = true
+                    try {
+                        val toneGen = ToneGenerator(AudioManager.STREAM_MUSIC, 100)
+                        coroutineScope.launch {
+                            for (i in 1..25) { // Beeps 5 times per second for 5 seconds
+                                toneGen.startTone(ToneGenerator.TONE_CDMA_ALERT_NETWORK_LITE, 100)
+                                delay(200)
+                            }
+                            toneGen.release()
+                        }
+                    } catch (e: Exception) {}
+                    delay(5000)
+                    onHangUp()
+                }
+            }
+        }
 
         LaunchedEffect(Unit) {
             sttEngine.transcriptionFlow.collect { segment ->
@@ -151,7 +177,28 @@ class IncomingCallActivity : ComponentActivity() {
                     fontSize = 12.sp
                 )
 
-                if (isCallActive) {
+                if (showScamAlert) {
+                    Spacer(modifier = Modifier.height(48.dp))
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(300.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFAA0000)),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(Icons.Default.Warning, contentDescription = "Warning", tint = Color.White, modifier = Modifier.size(64.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("SCAM DETECTED!", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Terminating call in 5s...", color = Color.White, fontSize = 16.sp)
+                        }
+                    }
+                } else if (isCallActive) {
                     Spacer(modifier = Modifier.height(48.dp))
                     Card(
                         modifier = Modifier

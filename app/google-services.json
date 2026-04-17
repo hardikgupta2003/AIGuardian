@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "764435601165",
+    "project_id": "aiguardian-151f4",
+    "storage_bucket": "aiguardian-151f4.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:764435601165:android:2586ce8ae9c6fea5fbc244",
+        "android_client_info": {
+          "package_name": "dev.hardik.aiguardian"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAztaMXMATD357GDN-5cirLN8LjoWFDXnI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

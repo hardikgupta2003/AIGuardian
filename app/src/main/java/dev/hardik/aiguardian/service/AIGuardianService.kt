@@ -96,7 +96,8 @@ class AIGuardianService : Service() {
         android.util.Log.d("AIGuardianDebug", "SERVICE_INIT: PhoneStateListener registered")
 
         // Start WebRTC Call Detection
-        webRTCManager.listenForIncomingCalls { callId ->
+        val myPin = dev.hardik.aiguardian.utils.DeviceProfile.getOrGeneratePin(this)
+        webRTCManager.listenForIncomingCalls(myPin) { callId ->
             android.util.Log.i("AIGuardianDebug", "WEBRTC_CALL: Incoming WebRTC call detected: $callId")
             val intent = Intent(this, IncomingCallActivity::class.java).apply {
                 putExtra("CALL_ID", callId)

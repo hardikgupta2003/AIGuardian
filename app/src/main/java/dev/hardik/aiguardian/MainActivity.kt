@@ -39,9 +39,15 @@ import dev.hardik.aiguardian.ui.AppNavigation
 import dev.hardik.aiguardian.ui.theme.AIGuardianTheme
 import dev.hardik.aiguardian.utils.PermissionUtils
 
+import javax.inject.Inject
+
 @OptIn(ExperimentalPermissionsApi::class)
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var webRTCManager: dev.hardik.aiguardian.webrtc.WebRTCManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         android.util.Log.i("AIGuardianDebug", "==========================================")
@@ -119,6 +125,7 @@ class MainActivity : ComponentActivity() {
                         if (canDrawOverlays) {
                             AppNavigation(
                                 navController = navController,
+                                webRTCManager = webRTCManager,
                                 isCallProtectionEnabled = isCallProtectionEnabled,
                                 onEnableCallProtection = {
                                     requestCallProtection(callProtectionLauncher::launch)

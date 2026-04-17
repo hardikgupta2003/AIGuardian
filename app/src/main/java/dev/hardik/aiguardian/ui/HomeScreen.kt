@@ -27,6 +27,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 fun HomeScreen(
     onNavigateToMedicines: () -> Unit,
     onNavigateToScams: () -> Unit,
+    onNavigateToDialer: () -> Unit,
     isCallProtectionEnabled: Boolean,
     onEnableCallProtection: () -> Unit,
     modifier: Modifier = Modifier,
@@ -144,6 +145,14 @@ fun HomeScreen(
                 icon = Icons.Default.Warning,
                 color = Color(0xFFF7B731),
                 onClick = onNavigateToScams,
+                modifier = Modifier.weight(1f)
+            )
+            ActionCard(
+                title = "Secure Call",
+                subtitle = "P2P VoIP",
+                icon = Icons.Default.Notifications,
+                color = Color(0xFF45B7D1),
+                onClick = onNavigateToDialer,
                 modifier = Modifier.weight(1f)
             )
         }

@@ -46,6 +46,8 @@ class IncomingCallActivity : ComponentActivity() {
             finish()
             return
         }
+        val isCaller = intent.getBooleanExtra("IS_CALLER", false)
+        val myPin = dev.hardik.aiguardian.utils.DeviceProfile.getOrGeneratePin(this)
 
         setContent {
             MaterialTheme(
@@ -56,14 +58,16 @@ class IncomingCallActivity : ComponentActivity() {
                 )
             ) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    IncomingCallScreen(
+                    CallScreen(
                         callId = callId,
+                        isCaller = isCaller,
+                        myPin = myPin,
                         onAnswer = {
                             sttEngine.initModel { ready ->
                                 if (ready) {
                                     sttEngine.startRecognition()
                                     scamDetector.startMonitoring()
-                                    webRTCManager.answerCall(callId) { audioData ->
+                                    webRTCManager.startCallAudio(callId, isCaller) { audioData ->
                                         lifecycleScope.launch {
                                             sttEngine.processAudioChunk(audioData, audioData.size)
                                         }
@@ -72,7 +76,7 @@ class IncomingCallActivity : ComponentActivity() {
                             }
                         },
                         onHangUp = {
-                            webRTCManager.endCall(callId)
+                            webRTCManager.endCall(myPin, callId)
                             sttEngine.stopRecognition()
                             scamDetector.stopMonitoring()
                             finish()
@@ -84,8 +88,10 @@ class IncomingCallActivity : ComponentActivity() {
     }
 
     @Composable
-    fun IncomingCallScreen(
+    fun CallScreen(
         callId: String,
+        isCaller: Boolean,
+        myPin: String,
         onAnswer: @DisallowComposableCalls () -> Unit,
         onHangUp: @DisallowComposableCalls () -> Unit
     ) {

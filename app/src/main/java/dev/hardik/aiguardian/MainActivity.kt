@@ -1,11 +1,16 @@
 package dev.hardik.aiguardian
 
+import android.app.role.RoleManager
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
+import android.telecom.TelecomManager
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -29,9 +34,15 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val navController = rememberNavController()
+            var isCallProtectionEnabled by remember { mutableStateOf(isCallProtectionEnabled()) }
             val permissionState = rememberMultiplePermissionsState(
                 permissions = PermissionUtils.REQUIRED_PERMISSIONS.toList()
             )
+            val callProtectionLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.StartActivityForResult()
+            ) {
+                isCallProtectionEnabled = isCallProtectionEnabled()
+            }
 
             // Start service ONLY after permissions are granted AND we are in the foreground
             LaunchedEffect(permissionState.allPermissionsGranted) {
@@ -56,6 +67,10 @@ class MainActivity : ComponentActivity() {
                     if (permissionState.allPermissionsGranted) {
                         AppNavigation(
                             navController = navController,
+                            isCallProtectionEnabled = isCallProtectionEnabled,
+                            onEnableCallProtection = {
+                                requestCallProtection(callProtectionLauncher::launch)
+                            },
                             modifier = Modifier.padding(innerPadding)
                         )
                     } else {
@@ -67,6 +82,39 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
+
+private fun MainActivity.isCallProtectionEnabled(): Boolean {
+    val telecomManager = getSystemService(TelecomManager::class.java)
+    return telecomManager?.defaultDialerPackage == packageName
+}
+
+private fun MainActivity.requestCallProtection(launch: (Intent) -> Unit) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val roleManager = getSystemService(RoleManager::class.java)
+        if (roleManager != null &&
+            roleManager.isRoleAvailable(RoleManager.ROLE_DIALER) &&
+            !roleManager.isRoleHeld(RoleManager.ROLE_DIALER)
+        ) {
+            launch(roleManager.createRequestRoleIntent(RoleManager.ROLE_DIALER))
+            return
+        }
+    }
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        val telecomManager = getSystemService(TelecomManager::class.java)
+        val intent = Intent(TelecomManager.ACTION_CHANGE_DEFAULT_DIALER).apply {
+            putExtra(TelecomManager.EXTRA_CHANGE_DEFAULT_DIALER_PACKAGE_NAME, packageName)
+        }
+        if (telecomManager?.defaultDialerPackage != packageName &&
+            intent.resolveActivity(packageManager) != null
+        ) {
+            launch(intent)
+            return
+        }
+    }
+
+    startActivity(Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
 }
 
 @Composable

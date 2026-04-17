@@ -9,6 +9,8 @@ import androidx.compose.ui.Modifier
 @Composable
 fun AppNavigation(
     navController: NavHostController,
+    isCallProtectionEnabled: Boolean,
+    onEnableCallProtection: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     NavHost(
@@ -19,7 +21,9 @@ fun AppNavigation(
         composable("home") {
             HomeScreen(
                 onNavigateToMedicines = { navController.navigate("medicines") },
-                onNavigateToScams = { navController.navigate("scams") }
+                onNavigateToScams = { navController.navigate("scams") },
+                isCallProtectionEnabled = isCallProtectionEnabled,
+                onEnableCallProtection = onEnableCallProtection
             )
         }
         composable("medicines") {

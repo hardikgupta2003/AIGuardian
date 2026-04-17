@@ -26,6 +26,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 fun HomeScreen(
     onNavigateToMedicines: () -> Unit,
     onNavigateToScams: () -> Unit,
+    isCallProtectionEnabled: Boolean,
+    onEnableCallProtection: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
@@ -79,6 +81,8 @@ fun HomeScreen(
 
         LiveProtectionPanel(
             state = protectionState,
+            isCallProtectionEnabled = isCallProtectionEnabled,
+            onEnableCallProtection = onEnableCallProtection,
             onRunDemo = viewModel::runDemoScamScan
         )
 
@@ -148,6 +152,8 @@ fun HomeScreen(
 @Composable
 private fun LiveProtectionPanel(
     state: dev.hardik.aiguardian.detection.ScamProtectionState,
+    isCallProtectionEnabled: Boolean,
+    onEnableCallProtection: () -> Unit,
     onRunDemo: () -> Unit
 ) {
     Surface(
@@ -201,11 +207,26 @@ private fun LiveProtectionPanel(
                 fontSize = 14.sp
             )
             Text(
+                text = if (isCallProtectionEnabled) "Call protection role: enabled" else "Call protection role: not enabled",
+                color = if (isCallProtectionEnabled) Color(0xFF9BE7C4) else Color(0xFFFFD9A8),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
                 text = "Latest transcript: ${state.lastTranscript}",
                 color = Color.White.copy(alpha = 0.8f),
                 fontSize = 14.sp,
                 lineHeight = 20.sp
             )
+            if (!isCallProtectionEnabled) {
+                Button(
+                    onClick = onEnableCallProtection,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4ECCA3))
+                ) {
+                    Text("Enable Call Protection", color = Color(0xFF102033), fontWeight = FontWeight.Bold)
+                }
+            }
             if (state.reasons.isNotEmpty()) {
                 Text(
                     text = state.reasons.joinToString(separator = " • "),

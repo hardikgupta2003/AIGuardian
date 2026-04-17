@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Guardian - Scam Caller Simulator</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0d1117;
+            color: #c9d1d9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background-color: #161b22;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            width: 400px;
+            text-align: center;
+            border: 1px solid #30363d;
+        }
+        h1 { color: #58a6ff; margin-bottom: 0.5rem; }
+        p { color: #8b949e; font-size: 0.9rem; margin-bottom: 2rem; }
+        .status {
+            padding: 0.5rem;
+            border-radius: 6px;
+            background: #21262d;
+            margin-bottom: 1.5rem;
+            font-family: monospace;
+            font-size: 0.8rem;
+        }
+        .btn {
+            background-color: #238636;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            width: 100%;
+            transition: background 0.2s;
+        }
+        .btn:hover { background-color: #2ea043; }
+        .btn:disabled { background-color: #30363d; cursor: not-allowed; }
+        .btn-hangup { background-color: #da3633; margin-top: 10px; }
+        .btn-hangup:hover { background-color: #f85149; }
+        .hidden { display: none; }
+        input {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            color: white;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Scam Simulator</h1>
+        <p>WebRTC Caller for AI Guardian Demo</p>
+        
+        <div id="setup">
+            <label style="display:block; text-align:left; font-size: 0.8rem; margin-bottom: 4px;">Firebase API Key</label>
+            <input type="text" id="apiKey" value="AIzaSyAztaMXMATD357GDN-5cirLN8LjoWFDXnI">
+            <label style="display:block; text-align:left; font-size: 0.8rem; margin-bottom: 4px;">Project ID</label>
+            <input type="text" id="projectId" value="aiguardian-151f4">
+            <label style="display:block; text-align:left; font-size: 0.8rem; margin-bottom: 4px;">Database URL</label>
+            <input type="text" id="databaseUrl" value="https://aiguardian-151f4-default-rtdb.firebaseio.com/">
+            <button class="btn" onclick="initFirebase()">Connect to Firebase</button>
+        </div>
+
+        <div id="call-controls" class="hidden">
+            <div class="status" id="status">Ready to Call</div>
+            <button class="btn" id="startBtn" onclick="startCall()">Start Call</button>
+            <button class="btn btn-hangup hidden" id="stopBtn" onclick="endCall()">Hang Up</button>
+            <div id="transcriptions" style="margin-top: 15px; font-size: 0.85rem; background: #0d1117; padding: 10px; border-radius: 6px; height: 120px; overflow-y: auto; text-align: left; border: 1px solid #30363d;">
+                <em style="color: #8b949e;">Live transciptions will appear here...</em>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <script>
+        let db;
+        let pc;
+        let dataChannel;
+        let callId;
+        let audioContext;
+        let processor;
+        let globalAudioStream;
+        const statusEl = document.getElementById('status');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+
+        function initFirebase() {
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const projectId = document.getElementById('projectId').value.trim();
+            const databaseUrl = document.getElementById('databaseUrl').value.trim();
+            
+            const firebaseConfig = {
+                apiKey: apiKey,
+                authDomain: `${projectId}.firebaseapp.com`,
+                databaseURL: databaseUrl,
+                projectId: projectId,
+            };
+
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.database();
+            
+            document.getElementById('setup').classList.add('hidden');
+            document.getElementById('call-controls').classList.remove('hidden');
+            statusEl.innerText = "Firebase Connected";
+        }
+
+        async function startCall() {
+            try {
+                statusEl.innerText = "Requesting microphone permission...";
+                globalAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                statusEl.innerText = "Microphone granted. Starting signaling...";
+            } catch (err) {
+                console.error(err);
+                statusEl.innerText = "Mic Error: " + err.message + " (Make sure you use localhost or HTTPS)";
+                return;
+            }
+
+            callId = 'web_' + Math.floor(Math.random() * 1000000);
+            statusEl.innerText = "Initiating Call: " + callId;
+            startBtn.classList.add('hidden');
+            stopBtn.classList.remove('hidden');
+
+            pc = new RTCPeerConnection({
+                iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+            });
+
+            dataChannel = pc.createDataChannel('audioStream');
+            dataChannel.onopen = () => {
+                // status element update usually happens here, but we now start streaming earlier.
+            };
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    db.ref(`calls/${callId}/offerCandidates`).push(event.candidate.toJSON());
+                }
+            };
+
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            
+            await db.ref(`calls/${callId}`).set({
+                offer: { type: offer.type, sdp: offer.sdp },
+                timestamp: Date.now()
+            });
+
+            let answerCandidatesQueue = [];
+
+            // Listen for Answer
+            db.ref(`calls/${callId}/answer`).on('value', async (snapshot) => {
+                const answer = snapshot.val();
+                if (answer && !pc.currentRemoteDescription) {
+                    await pc.setRemoteDescription(new RTCSessionDescription(answer));
+                    statusEl.innerText = "App Answered! Streaming...";
+                    
+                    // Add any candidates that arrived early
+                    answerCandidatesQueue.forEach(c => pc.addIceCandidate(new RTCIceCandidate(c)).catch(console.error));
+                    answerCandidatesQueue = [];
+
+                    // START FIREBASE AUDIO SOCKET RELAY REGARDLESS OF FIREWALL
+                    if (!processor) {
+                        startStreaming(globalAudioStream);
+                    }
+                }
+            });
+
+            // Listen for Remote Candidates (Answer Candidates)
+            db.ref(`calls/${callId}/answerCandidates`).on('child_added', (snapshot) => {
+                const candidate = snapshot.val();
+                if (pc.remoteDescription && pc.remoteDescription.type) {
+                    pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(console.error);
+                } else {
+                    answerCandidatesQueue.push(candidate);
+                }
+            });
+
+            // Listen for Live Transcriptions from Android App
+            db.ref(`calls/${callId}/transcriptions`).on('child_added', (snapshot) => {
+                const trans = snapshot.val();
+                if (trans && trans.text) {
+                    const box = document.getElementById('transcriptions');
+                    const isFirst = box.innerHTML.includes('appear here');
+                    if (isFirst) box.innerHTML = ''; // clear placeholder
+                    
+                    const entry = document.createElement('div');
+                    entry.style.marginBottom = '6px';
+                    entry.innerHTML = `<span style="color:#58a6ff;">[App]:</span> ${trans.text}`;
+                    box.appendChild(entry);
+                    box.scrollTop = box.scrollHeight;
+                }
+            });
+        }
+
+        async function startStreaming(stream) {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                const source = audioContext.createMediaStreamSource(stream);
+            
+            // Using ScriptProcessor for high compatibility in demo
+            processor = audioContext.createScriptProcessor(4096, 1, 1);
+            
+            processor.onaudioprocess = (e) => {
+                const inputData = e.inputBuffer.getChannelData(0);
+                // Convert Float32 to Int16
+                const pcmData = new Int16Array(inputData.length);
+                for (let i = 0; i < inputData.length; i++) {
+                    pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
+                }
+                
+                // Method 1: WebRTC DataChannel (if connected)
+                if (dataChannel && dataChannel.readyState === 'open') {
+                    dataChannel.send(pcmData.buffer);
+                }
+                
+                // Method 2: Firebase Realtime Database Audio Relay (Works instantly through all Firewalls)
+                if (callId) {
+                    const bytes = new Uint8Array(pcmData.buffer);
+                    let binary = '';
+                    for (let i = 0; i < bytes.byteLength; i++) {
+                        binary += String.fromCharCode(bytes[i]);
+                    }
+                    const b64 = window.btoa(binary);
+                    db.ref(`calls/${callId}/audio`).push(b64);
+                }
+            };
+
+            source.connect(processor);
+            processor.connect(audioContext.destination);
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        function endCall() {
+            if (processor) processor.disconnect();
+            if (audioContext) audioContext.close();
+            if (pc) pc.close();
+            if (globalAudioStream) {
+                globalAudioStream.getTracks().forEach(track => track.stop());
+            }
+            if (db && callId) db.ref(`calls/${callId}`).remove();
+            
+            statusEl.innerText = "Call Ended";
+            startBtn.classList.remove('hidden');
+            stopBtn.classList.add('hidden');
+        }
+    </script>
+</body>
+</html>

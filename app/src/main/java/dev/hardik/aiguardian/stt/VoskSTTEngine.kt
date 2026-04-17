@@ -98,16 +98,19 @@ class VoskSTTEngine @Inject constructor(
     }
 
     private suspend fun emitTranscript(rawJson: String, isFinal: Boolean) {
+        // RADICAL FORENSIC LOG: Print exactly what Vosk returned before any parsing
+        android.util.Log.v("AIGuardianDebug", "STT_RAW: $rawJson")
+
         val text = extractText(rawJson, isFinal)
         if (text.isBlank()) return
         if (!isFinal && text == lastPartial) return
 
         if (isFinal) {
             lastPartial = ""
-            android.util.Log.i("AIGuardianDebug", "STT_RESULT: >>> FINAL TRANSCRIPT: $text")
+            android.util.Log.i("AIGuardianDebug", "STT_RESULT: [FINAL] $text")
         } else {
             lastPartial = text
-            android.util.Log.v("AIGuardianDebug", "STT_RESULT: Partial: $text")
+            android.util.Log.d("AIGuardianDebug", "STT_RESULT: [Partial] $text")
         }
 
         _transcriptionFlow.emit(TranscriptSegment(text = text, isFinal = isFinal))

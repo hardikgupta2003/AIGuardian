@@ -37,6 +37,14 @@ class AIGuardianService : Service() {
 
     private val phoneStateListener = object : PhoneStateListener() {
         override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+            val stateName = when(state) {
+                TelephonyManager.CALL_STATE_RINGING -> "RINGING"
+                TelephonyManager.CALL_STATE_OFFHOOK -> "OFFHOOK"
+                TelephonyManager.CALL_STATE_IDLE -> "IDLE"
+                else -> "UNKNOWN($state)"
+            }
+            android.util.Log.d("AIGuardianDebug", "TELEPHONY_STATE_CHANGE: New state = $stateName | phoneNumber = $phoneNumber")
+
             when (state) {
                 TelephonyManager.CALL_STATE_RINGING -> {
                     android.util.Log.i("AIGuardianDebug", "CALL_STATE: Ringing. Incoming from: $phoneNumber")
@@ -46,6 +54,8 @@ class AIGuardianService : Service() {
                     android.util.Log.i("AIGuardianDebug", "CALL_STATE: Offhook (Call Active)")
                     if (!isMonitoringCall) {
                         handleCallStarted(phoneNumber)
+                    } else {
+                        android.util.Log.d("AIGuardianDebug", "CALL_STATE: Already monitoring, ignoring OFFHOOK pulse")
                     }
                 }
                 TelephonyManager.CALL_STATE_IDLE -> {

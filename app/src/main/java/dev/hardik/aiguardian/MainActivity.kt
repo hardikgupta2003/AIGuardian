@@ -60,6 +60,14 @@ class MainActivity : ComponentActivity() {
                 permissions = PermissionUtils.REQUIRED_PERMISSIONS.toList()
             )
 
+            // Launcher for Dialer Role
+            val callProtectionLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.StartActivityForResult()
+            ) {
+                isCallProtectionEnabled = isCallProtectionEnabled()
+                android.util.Log.d("AIGuardianDebug", "DIALER_ROLE_RESULT: roleHeld=$isCallProtectionEnabled")
+            }
+
             // Launcher for Overlay Permission (Still needed for alerts!)
             val overlayLauncher = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.StartActivityForResult()
@@ -70,8 +78,17 @@ class MainActivity : ComponentActivity() {
 
             // Sync status
             androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+                isCallProtectionEnabled = isCallProtectionEnabled()
                 canDrawOverlays = Settings.canDrawOverlays(context)
                 onPauseOrDispose { }
+            }
+
+            // AUTO-REQUEST DIALER ROLE: Trigger as soon as basic permissions are granted
+            LaunchedEffect(permissionState.allPermissionsGranted, canDrawOverlays) {
+                if (permissionState.allPermissionsGranted && canDrawOverlays && !isCallProtectionEnabled) {
+                    android.util.Log.i("AIGuardianDebug", "AUTO_ACTION: Requesting Dialer Role for microphone persistence")
+                    requestCallProtection(callProtectionLauncher::launch)
+                }
             }
 
             // Start service once basic permissions are granted
@@ -102,8 +119,10 @@ class MainActivity : ComponentActivity() {
                         if (canDrawOverlays) {
                             AppNavigation(
                                 navController = navController,
-                                isCallProtectionEnabled = true, // Force enabled as it uses PhoneStateListener now
-                                onEnableCallProtection = { /* No longer needed */ },
+                                isCallProtectionEnabled = isCallProtectionEnabled,
+                                onEnableCallProtection = {
+                                    requestCallProtection(callProtectionLauncher::launch)
+                                },
                                 modifier = Modifier.padding(innerPadding)
                             )
                         } else {

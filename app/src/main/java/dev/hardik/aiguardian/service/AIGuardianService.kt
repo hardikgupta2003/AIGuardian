@@ -16,6 +16,8 @@ import dev.hardik.aiguardian.utils.Constants
 import dev.hardik.aiguardian.sos.GeoSafetyManager
 import dev.hardik.aiguardian.detection.ScamDetector
 import dev.hardik.aiguardian.detection.OverlayManager
+import dev.hardik.aiguardian.webrtc.WebRTCManager
+import dev.hardik.aiguardian.ui.call.IncomingCallActivity
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import android.content.pm.ServiceInfo
@@ -31,6 +33,9 @@ class AIGuardianService : Service() {
 
     @Inject
     lateinit var overlayManager: OverlayManager
+
+    @Inject
+    lateinit var webRTCManager: WebRTCManager
 
     private lateinit var telephonyManager: TelephonyManager
     private var isMonitoringCall = false
@@ -89,6 +94,16 @@ class AIGuardianService : Service() {
         telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
         telephonyManager.listen(phoneStateListener, PhoneStateListener.LISTEN_CALL_STATE)
         android.util.Log.d("AIGuardianDebug", "SERVICE_INIT: PhoneStateListener registered")
+
+        // Start WebRTC Call Detection
+        webRTCManager.listenForIncomingCalls { callId ->
+            android.util.Log.i("AIGuardianDebug", "WEBRTC_CALL: Incoming WebRTC call detected: $callId")
+            val intent = Intent(this, IncomingCallActivity::class.java).apply {
+                putExtra("CALL_ID", callId)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+        }
     }
 
     private fun handleCallStarted(number: String?) {

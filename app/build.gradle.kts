@@ -68,6 +68,9 @@ dependencies {
     // Vosk
     implementation(libs.vosk.android)
 
+    // WebRTC
+    implementation("io.github.webrtc-sdk:android:114.5735.02")
+
     // Location
     implementation(libs.play.services.location)
 

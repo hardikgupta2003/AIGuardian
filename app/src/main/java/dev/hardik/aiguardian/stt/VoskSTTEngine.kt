@@ -36,7 +36,7 @@ class VoskSTTEngine @Inject constructor(
     private val _transcriptionFlow = MutableSharedFlow<TranscriptSegment>(extraBufferCapacity = 16)
     val transcriptionFlow = _transcriptionFlow.asSharedFlow()
 
-    fun initModel(modelPath: String = "model-en-us", onComplete: (Boolean) -> Unit) {
+    fun initModel(modelPath: String = "model-en-in", onComplete: (Boolean) -> Unit) {
         if (_isModelReady.value) {
             onComplete(true)
             return
@@ -68,9 +68,12 @@ class VoskSTTEngine @Inject constructor(
 
     fun startRecognition() {
         model?.let {
-            recognizer = Recognizer(it, 16000.0f)
+            recognizer = Recognizer(it, 16000.0f).apply {
+                setMaxAlternatives(3)
+                setWords(true)
+            }
             lastPartial = ""
-            android.util.Log.d("AIGuardianDebug", "STT: Recognizer started")
+            android.util.Log.d("AIGuardianDebug", "STT: Recognizer started (maxAlt=3, words=true)")
         }
     }
 
@@ -118,8 +121,21 @@ class VoskSTTEngine @Inject constructor(
 
     private fun extractText(rawJson: String, isFinal: Boolean): String {
         return runCatching {
-            val key = if (isFinal) "text" else "partial"
-            JSONObject(rawJson).optString(key).trim()
+            val json = JSONObject(rawJson)
+            if (isFinal) {
+                // With maxAlternatives, results come in an "alternatives" array
+                val alternatives = json.optJSONArray("alternatives")
+                if (alternatives != null && alternatives.length() > 0) {
+                    // Pick the first (highest confidence) alternative
+                    val best = alternatives.getJSONObject(0)
+                    best.optString("text", "").trim()
+                } else {
+                    // Fallback to simple "text" key
+                    json.optString("text", "").trim()
+                }
+            } else {
+                json.optString("partial", "").trim()
+            }
         }.getOrElse {
             Log.w("VoskSTTEngine", "Could not parse recognizer output: $rawJson", it)
             ""

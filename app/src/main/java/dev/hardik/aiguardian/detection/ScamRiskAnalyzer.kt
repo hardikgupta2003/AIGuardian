@@ -36,38 +36,96 @@ data class ScamProtectionState(
 
 class ScamRiskAnalyzer {
 
+    // Common Vosk mishearings mapped to actual scam keywords
+    // This handles cases where STT produces phonetic spellings
+    private val phoneticCorrections = mapOf(
+        "oh tee pee" to "otp",
+        "o t p" to "otp",
+        "o tp" to "otp",
+        "ot p" to "otp",
+        "see vee vee" to "cvv",
+        "c v v" to "cvv",
+        "cv v" to "cvv",
+        "c vv" to "cvv",
+        "you pee eye" to "upi",
+        "u p i" to "upi",
+        "aye are yes" to "irs",
+        "i r s" to "irs",
+        "add har" to "aadhar",
+        "aadhar card" to "aadhar",
+        "adhar" to "aadhar",
+        "pan card number" to "pan card",
+        "sea bee eye" to "cbi",
+        "c b i" to "cbi",
+        "any desk" to "anydesk",
+        "team viewer" to "teamviewer",
+        "quick support" to "quicksupport",
+        "pay tm" to "paytm",
+        "phone pe" to "phonepe",
+        "gee pay" to "gpay",
+        "g pay" to "gpay",
+        "net ban king" to "net banking",
+        "debit card" to "debit card",
+        "credit card" to "credit card",
+        "gift card" to "gift card",
+        "a count number" to "account number",
+        "account number" to "account number",
+        "bank detail" to "bank details",
+        "wire transfer" to "wire transfer",
+        "digital arrest" to "digital arrest",
+        "bijli ka bill" to "bijli bill",
+        "bijlee bill" to "bijli bill"
+    )
+
     private val impersonationSignals = listOf(
         "irs", "income tax", "tax department", "police", "cyber cell", "bank manager",
-        "government", "court", "social security", "customs", "federal", "officer"
+        "government", "court", "social security", "customs", "federal", "officer",
+        "cbi", "crime branch", "trai", "fedex", "kbc", "customer care",
+        "reserve bank", "rbi", "ministry", "telecom authority", "regulatory"
     )
 
     private val urgencySignals = listOf(
         "urgent", "right now", "immediately", "do not hang up", "don't hang up",
-        "stay on the line", "within minutes", "final warning", "act now"
+        "stay on the line", "within minutes", "final warning", "act now", "turant",
+        "jaldi", "abhi", "fauran", "last chance", "time is running out",
+        "hurry up", "don't delay"
     )
 
     private val sensitiveDataSignals = listOf(
-        "otp", "one time password", "pin", "cvv", "card number", "debit card",
-        "credit card", "bank details", "account number", "net banking", "upi pin"
+        "otp", "one time password", "pin", "cvv", "card number", "debit card", "account details",
+        "credit card", "bank details", "account number", "net banking", "upi pin",
+        "pan card", "aadhar", "khata", "password", "login details", "verify your identity",
+        "confirm your details", "social security number", "mother maiden name"
     )
 
     private val paymentSignals = listOf(
         "gift card", "wire transfer", "bank transfer", "crypto", "bitcoin",
-        "wallet transfer", "send money", "payment app"
+        "wallet transfer", "send money", "payment app", "paytm", "phonepe", "gpay",
+        "google pay", "paisa", "paise", "rupee", "cashback", "refund",
+        "recharge", "upi transfer", "neft", "rtgs", "imps"
     )
 
     private val fearSignals = listOf(
         "arrest", "warrant", "freeze your account", "account blocked", "legal action",
-        "jail", "police case", "penalty", "suspended"
+        "jail", "police case", "penalty", "suspended", "digital arrest", "fir",
+        "parcel block", "electricity bill", "bijli bill", "court order",
+        "imprisonment", "confiscate", "seize", "blacklisted"
     )
 
     private val familyEmergencySignals = listOf(
         "grandson", "granddaughter", "your grandson", "your granddaughter",
-        "accident", "hospital", "bail money", "family emergency", "mom fell"
+        "accident", "hospital", "bail money", "family emergency", "mom fell",
+        "son in trouble", "kidnapped", "ransom"
+    )
+    
+    private val techScamSignals = listOf(
+        "download apk", "anydesk", "teamviewer", "quicksupport", "screen share", "link open",
+        "install app", "remote access", "download this", "click the link",
+        "share screen", "mirror screen"
     )
 
     fun analyze(windowText: String): ScamAnalysis {
-        val normalized = windowText.lowercase().trim()
+        var normalized = windowText.lowercase().trim()
         if (normalized.isBlank()) {
             return ScamAnalysis(
                 score = 0,
@@ -76,6 +134,9 @@ class ScamRiskAnalyzer {
                 windowText = windowText
             )
         }
+
+        // Apply phonetic corrections before analysis
+        normalized = applyPhoneticCorrections(normalized)
 
         var score = 0
         val reasons = linkedSetOf<String>()
@@ -86,7 +147,9 @@ class ScamRiskAnalyzer {
         score += applySignals(normalized, paymentSignals, 20, "Caller is pushing unusual payment methods", reasons)
         score += applySignals(normalized, fearSignals, 16, "Caller is threatening punishment or account loss", reasons)
         score += applySignals(normalized, familyEmergencySignals, 18, "Caller is using a family-emergency scam pattern", reasons)
+        score += applySignals(normalized, techScamSignals, 22, "Caller is instructing to download remote-access apps", reasons)
 
+        // Combo bonuses — multiple categories = much more likely scam
         if (containsAny(normalized, impersonationSignals) && containsAny(normalized, sensitiveDataSignals)) {
             score += 20
             reasons += "Authority claim combined with credential request"
@@ -95,6 +158,11 @@ class ScamRiskAnalyzer {
         if (containsAny(normalized, urgencySignals) && containsAny(normalized, paymentSignals + sensitiveDataSignals)) {
             score += 14
             reasons += "Urgency combined with money or credential request"
+        }
+
+        if (containsAny(normalized, fearSignals) && containsAny(normalized, sensitiveDataSignals)) {
+            score += 16
+            reasons += "Fear tactics combined with data requests"
         }
 
         val level = when {
@@ -110,6 +178,19 @@ class ScamRiskAnalyzer {
             reasons = reasons.toList(),
             windowText = windowText
         )
+    }
+
+    /**
+     * Apply phonetic corrections to handle common Vosk mishearings.
+     * For example, Vosk may transcribe "OTP" as "oh tee pee" — this
+     * normalizes those spellings back to the intended keyword.
+     */
+    private fun applyPhoneticCorrections(text: String): String {
+        var corrected = text
+        for ((mishearing, correction) in phoneticCorrections) {
+            corrected = corrected.replace(mishearing, correction)
+        }
+        return corrected
     }
 
     private fun applySignals(

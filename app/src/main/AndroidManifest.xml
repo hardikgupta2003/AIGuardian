@@ -98,9 +98,41 @@
             </intent-filter>
         </receiver>
 
+        <!-- FCM Messaging Service -->
+        <service
+            android:name=".data.remote.GuardianMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <receiver
             android:name=".reminder.MedicineReceiver"
             android:exported="false" />
+
+        <!-- ========================================= -->
+        <!-- SOS Home-Screen Widget                    -->
+        <!-- ========================================= -->
+        <receiver
+            android:name=".widget.SOSWidgetProvider"
+            android:exported="true"
+            android:label="SOS Guardian Widget">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/sos_widget_info" />
+        </receiver>
+
+        <!-- Transparent overlay Activity launched when widget is tapped -->
+        <activity
+            android:name=".widget.SOSWidgetActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AIGuardian.Transparent"
+            android:launchMode="singleTop"
+            android:excludeFromRecents="true" />
 
     </application>
 

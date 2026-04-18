@@ -12,11 +12,12 @@ fun AppNavigation(
     webRTCManager: dev.hardik.aiguardian.webrtc.WebRTCManager,
     isCallProtectionEnabled: Boolean,
     onEnableCallProtection: () -> Unit,
+    userRole: dev.hardik.aiguardian.utils.DeviceProfile.Role,
     modifier: Modifier = Modifier
 ) {
     NavHost(
         navController = navController,
-        startDestination = "home",
+        startDestination = if (userRole == dev.hardik.aiguardian.utils.DeviceProfile.Role.CARETAKER) "caretaker_home" else "home",
         modifier = modifier
     ) {
         composable("home") {
@@ -38,6 +39,9 @@ fun AppNavigation(
             dev.hardik.aiguardian.ui.call.DialerScreen(
                 webRTCManager = webRTCManager
             )
+        }
+        composable("caretaker_home") {
+            CaretakerScreen()
         }
     }
 }

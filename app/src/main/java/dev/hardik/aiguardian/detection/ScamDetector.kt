@@ -16,17 +16,28 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.Priority
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dev.hardik.aiguardian.utils.DeviceProfile
+import dev.hardik.aiguardian.data.remote.FirebaseRepository
 
 @Singleton
 class ScamDetector @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val sttEngine: VoskSTTEngine,
     private val overlayManager: OverlayManager,
     private val repository: SafetyRepository,
-    private val callInterventionManager: CallInterventionManager
+    private val callInterventionManager: CallInterventionManager,
+    private val firebaseRepository: FirebaseRepository,
+    private val locationClient: FusedLocationProviderClient
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val analyzer = ScamRiskAnalyzer()
     private val rollingSegments = ArrayDeque<TranscriptSegment>()
+    private val devicePin = DeviceProfile.getOrGeneratePin(context)
+
 
     private var observationJob: Job? = null
     private var activePhoneNumber = "Incoming Call"
@@ -91,6 +102,10 @@ class ScamDetector @Inject constructor(
         )
         Log.d("AIGuardianDebug", "DETECTION: Score=${analysis.score} | Level=${analysis.level} | Reasons=${analysis.reasons}")
 
+        if (analysis.level >= ThreatLevel.CAUTION) {
+            reportScamToFirebase(windowText)
+        }
+
         _protectionState.update { state ->
             state.copy(
                 isMonitoring = true,
@@ -134,10 +149,41 @@ class ScamDetector @Inject constructor(
         }
     }
 
-    private fun pruneRollingWindow(nowMs: Long) {
-        while (rollingSegments.isNotEmpty() && nowMs - rollingSegments.first().timestampMs > 3_000) {
+    private fun pruneRollingWindow(currentTimestampMs: Long) {
+        val windowLimit = 60000 // 1 minute window
+        while (rollingSegments.isNotEmpty() && currentTimestampMs - rollingSegments.first().timestampMs > windowLimit) {
             rollingSegments.removeFirst()
         }
+    }
+
+    @android.annotation.SuppressLint("MissingPermission")
+    private fun reportScamToFirebase(transcript: String) {
+        // Debounce reporting (once every 30 seconds for same call)
+        val now = System.currentTimeMillis()
+        if (now - lastLoggedAtMs < 30000) return
+        lastLoggedAtMs = now
+
+        locationClient.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null)
+            .addOnSuccessListener { location ->
+                val locationUrl = if (location != null) {
+                    "https://www.google.com/maps/search/?api=1&query=${location.latitude},${location.longitude}"
+                } else {
+                    "Location unknown"
+                }
+
+                scope.launch {
+                    try {
+                        firebaseRepository.reportScam(
+                            elderPin = devicePin,
+                            phoneNumber = activePhoneNumber,
+                            location = locationUrl,
+                            transcript = transcript
+                        )
+                    } catch (e: Exception) {
+                        Log.e("ScamDetector", "Failed to report scam to Firebase", e)
+                    }
+                }
+            }
     }
 
     private fun maybePersistDetection(

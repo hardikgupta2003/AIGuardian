@@ -17,6 +17,7 @@ class SOSManager @Inject constructor(
     private val locationClient: FusedLocationProviderClient,
     private val firebaseRepository: dev.hardik.aiguardian.data.remote.FirebaseRepository
 ) {
+    private val devicePin = dev.hardik.aiguardian.utils.DeviceProfile.getOrGeneratePin(context)
     private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO)
 
     private val smsManager: SmsManager by lazy {
@@ -53,7 +54,7 @@ class SOSManager @Inject constructor(
                 // Log to Firebase for family monitoring
                 scope.launch {
                     try {
-                        firebaseRepository.logSOS("current_user", locationUrl)
+                        firebaseRepository.logSOS(devicePin, locationUrl)
                     } catch (e: Exception) {
                         Log.e("SOSManager", "Firebase log failed", e)
                     }

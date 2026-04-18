@@ -39,6 +39,8 @@ import dev.hardik.aiguardian.ui.AppNavigation
 import dev.hardik.aiguardian.ui.theme.AIGuardianTheme
 import dev.hardik.aiguardian.utils.PermissionUtils
 
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @OptIn(ExperimentalPermissionsApi::class)
@@ -48,19 +50,23 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var webRTCManager: dev.hardik.aiguardian.webrtc.WebRTCManager
 
+    @Inject
+    lateinit var firebaseRepository: dev.hardik.aiguardian.data.remote.FirebaseRepository
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        android.util.Log.i("AIGuardianDebug", "==========================================")
-        android.util.Log.i("AIGuardianDebug", "APP_STARTUP: MainActivity.onCreate")
-        android.util.Log.i("AIGuardianDebug", "Package: $packageName")
-        android.util.Log.i("AIGuardianDebug", "==========================================")
-        
         enableEdgeToEdge()
+
+        lifecycleScope.launch {
+            firebaseRepository.signInAnonymously()
+        }
+
         setContent {
             val context = androidx.compose.ui.platform.LocalContext.current
             val navController = rememberNavController()
             var isCallProtectionEnabled by remember { mutableStateOf(isCallProtectionEnabled()) }
             var canDrawOverlays by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+            var userRole by remember { mutableStateOf(dev.hardik.aiguardian.utils.DeviceProfile.getRole(context)) }
 
             val permissionState = rememberMultiplePermissionsState(
                 permissions = PermissionUtils.REQUIRED_PERMISSIONS.toList()
@@ -122,7 +128,12 @@ class MainActivity : ComponentActivity() {
             AIGuardianTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     if (permissionState.allPermissionsGranted) {
-                        if (canDrawOverlays) {
+                        if (userRole == dev.hardik.aiguardian.utils.DeviceProfile.Role.NONE) {
+                            dev.hardik.aiguardian.ui.RoleSelectionScreen { role ->
+                                dev.hardik.aiguardian.utils.DeviceProfile.setRole(context, role)
+                                userRole = role
+                            }
+                        } else if (canDrawOverlays) {
                             AppNavigation(
                                 navController = navController,
                                 webRTCManager = webRTCManager,
@@ -130,6 +141,7 @@ class MainActivity : ComponentActivity() {
                                 onEnableCallProtection = {
                                     requestCallProtection(callProtectionLauncher::launch)
                                 },
+                                userRole = userRole,
                                 modifier = Modifier.padding(innerPadding)
                             )
                         } else {

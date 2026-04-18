@@ -5,6 +5,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -29,7 +31,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import android.media.AudioManager
 import android.media.ToneGenerator
-import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.lifecycleScope
 import javax.inject.Inject
 
@@ -154,7 +155,8 @@ class IncomingCallActivity : ComponentActivity() {
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier.verticalScroll(rememberScrollState())
             ) {
                 Text(
                     text = "AI GUARD",
@@ -210,14 +212,14 @@ class IncomingCallActivity : ComponentActivity() {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text("Real-time Analysis", color = Color.Gray, fontSize = 12.sp)
                             Spacer(modifier = Modifier.height(12.dp))
-                            Box(modifier = Modifier.weight(1f)) {
+                            Box(modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 300.dp)) {
                                 Column {
                                     transcriptions.forEach { text ->
                                         Text(text = text, color = Color.White, fontSize = 16.sp, modifier = Modifier.padding(bottom = 4.dp))
                                     }
                                 }
                             }
-                            Divider(color = Color.DarkGray, modifier = Modifier.padding(vertical = 8.dp))
+                            HorizontalDivider(color = Color.DarkGray, modifier = Modifier.padding(vertical = 8.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("Threat Status: ", color = Color.Gray)
                                 Text(

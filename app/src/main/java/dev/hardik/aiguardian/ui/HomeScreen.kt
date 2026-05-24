@@ -168,7 +168,7 @@ fun SOSButton(
     var sosFired by remember { mutableStateOf(false) }
 
     // Animate progress while holding
-    LaunchedEffect(isHolding) {
+    LaunchedEffect(isHolding) @androidx.annotation.RequiresPermission(android.Manifest.permission.VIBRATE) {
         if (isHolding) {
             sosFired = false
             holdProgress = 0f

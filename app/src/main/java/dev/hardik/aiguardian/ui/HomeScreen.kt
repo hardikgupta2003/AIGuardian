@@ -1,11 +1,13 @@
 package dev.hardik.aiguardian.ui
 
+import android.Manifest
 import android.content.Context
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.widget.Toast
+import androidx.annotation.RequiresPermission
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -311,6 +313,7 @@ fun SOSButton(
     }
 }
 
+@RequiresPermission(Manifest.permission.VIBRATE)
 private fun triggerHaptic(context: Context) {
     try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -451,16 +454,16 @@ private fun LiveProtectionPanel(
                 }
             }
 
-            if (!isCallProtectionEnabled) {
-                Button(
-                    onClick = onEnableCallProtection,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4ECCA3)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Enable Call Protection", color = Color(0xFF0D1117), fontWeight = FontWeight.Bold)
-                }
-            }
+//            if (!isCallProtectionEnabled) {
+//                Button(
+//                    onClick = onEnableCallProtection,
+//                    shape = RoundedCornerShape(12.dp),
+//                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4ECCA3)),
+//                    modifier = Modifier.fillMaxWidth()
+//                ) {
+//                    Text("Enable Call Protection", color = Color(0xFF0D1117), fontWeight = FontWeight.Bold)
+//                }
+//            }
 
             if (state.reasons.isNotEmpty()) {
                 Text(
@@ -484,14 +487,14 @@ private fun LiveProtectionPanel(
                 }
             }
 
-            OutlinedButton(
-                onClick = onRunDemo,
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFF7B731)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("▶ Run Scam Demo", fontWeight = FontWeight.Bold)
-            }
+//            OutlinedButton(
+//                onClick = onRunDemo,
+//                shape = RoundedCornerShape(12.dp),
+//                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFF7B731)),
+//                modifier = Modifier.fillMaxWidth()
+//            ) {
+//                Text("▶ Run Scam Demo", fontWeight = FontWeight.Bold)
+//            }
         }
     }
 }

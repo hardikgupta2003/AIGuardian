@@ -31,7 +31,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import android.media.AudioManager
 import android.media.ToneGenerator
-import androidx.lifecycle.lifecycleScope
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -74,9 +73,7 @@ class IncomingCallActivity : ComponentActivity() {
                                     sttEngine.startRecognition()
                                     scamDetector.startMonitoring()
                                     webRTCManager.startCallAudio(callId, isCaller) { audioData ->
-                                        lifecycleScope.launch {
-                                            sttEngine.processAudioChunk(audioData, audioData.size)
-                                        }
+                                        sttEngine.processAudioChunk(audioData, audioData.size)
                                     }
                                 }
                             }
@@ -201,26 +198,26 @@ class IncomingCallActivity : ComponentActivity() {
                         }
                     }
                 } else if (isCallActive) {
-                    Spacer(modifier = Modifier.height(48.dp))
+                    Spacer(modifier = Modifier.height(100.dp))
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(300.dp),
+                            .height(50.dp),
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
                         shape = RoundedCornerShape(16.dp)
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text("Real-time Analysis", color = Color.Gray, fontSize = 12.sp)
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Box(modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 300.dp)) {
-                                Column {
-                                    transcriptions.forEach { text ->
-                                        Text(text = text, color = Color.White, fontSize = 16.sp, modifier = Modifier.padding(bottom = 4.dp))
-                                    }
-                                }
-                            }
-                            HorizontalDivider(color = Color.DarkGray, modifier = Modifier.padding(vertical = 8.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+//                        Column()) {
+//                            Text("Real-time Analysis", color = Color.Gray, fontSize = 12.sp)
+//                            Spacer(modifier = Modifier.height(12.dp))
+//                            Box(modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 300.dp)) {
+//                                Column {
+//                                    transcriptions.forEach { text ->
+//                                        Text(text = text, color = Color.White, fontSize = 16.sp, modifier = Modifier.padding(bottom = 4.dp))
+//                                    }
+//                                }
+//                            }
+//                            HorizontalDivider(color = Color.DarkGray, modifier = Modifier.padding(vertical = 8.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically,modifier = Modifier.padding(16.dp)) {
                                 Text("Threat Status: ", color = Color.Gray)
                                 Text(
                                     text = scamThreatLevel,
@@ -232,7 +229,7 @@ class IncomingCallActivity : ComponentActivity() {
                                     fontWeight = FontWeight.Bold
                                 )
                             }
-                        }
+//                        }
                     }
                 }
 

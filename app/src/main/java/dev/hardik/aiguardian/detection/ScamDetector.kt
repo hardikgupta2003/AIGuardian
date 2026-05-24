@@ -1,8 +1,10 @@
 package dev.hardik.aiguardian.detection
 
+import android.speech.SpeechRecognizer
 import android.util.Log
 import dev.hardik.aiguardian.data.model.ScamEvent
 import dev.hardik.aiguardian.data.repository.SafetyRepository
+import dev.hardik.aiguardian.stt.TranscriptHub
 import dev.hardik.aiguardian.stt.VoskSTTEngine
 import java.util.ArrayDeque
 import javax.inject.Inject
@@ -26,6 +28,7 @@ import dev.hardik.aiguardian.data.remote.FirebaseRepository
 @Singleton
 class ScamDetector @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val transcriptHub: TranscriptHub,
     private val sttEngine: VoskSTTEngine,
     private val overlayManager: OverlayManager,
     private val repository: SafetyRepository,
@@ -47,13 +50,17 @@ class ScamDetector @Inject constructor(
     private val _protectionState = MutableStateFlow(ScamProtectionState())
     val protectionState: StateFlow<ScamProtectionState> = _protectionState.asStateFlow()
 
+    private fun isAnySttAvailable(): Boolean {
+        return SpeechRecognizer.isRecognitionAvailable(context) || sttEngine.isModelReady.value
+    }
+
     fun startMonitoring() {
         stopMonitoring()
         rollingSegments.clear()
         severeActionTaken = false
         _protectionState.value = _protectionState.value.copy(
             isMonitoring = true,
-            modelReady = sttEngine.isModelReady.value,
+            modelReady = isAnySttAvailable(),
             activePhoneNumber = activePhoneNumber,
             lastTranscript = "Listening for scam language…",
             score = 0,
@@ -64,7 +71,7 @@ class ScamDetector @Inject constructor(
         )
 
         observationJob = scope.launch {
-            sttEngine.transcriptionFlow.collect { segment ->
+            transcriptHub.transcripts.collect { segment ->
                 analyzeTranscription(segment)
             }
         }
@@ -94,7 +101,7 @@ class ScamDetector @Inject constructor(
 
         _protectionState.value = ScamProtectionState(
             isMonitoring = true,
-            modelReady = sttEngine.isModelReady.value,
+            modelReady = isAnySttAvailable(),
             activePhoneNumber = activePhoneNumber,
             lastTranscript = segment.text,
             score = analysis.score,
@@ -109,7 +116,7 @@ class ScamDetector @Inject constructor(
         _protectionState.update { state ->
             state.copy(
                 isMonitoring = true,
-                modelReady = sttEngine.isModelReady.value,
+                modelReady = isAnySttAvailable(),
                 activePhoneNumber = activePhoneNumber,
                 lastTranscript = segment.text,
                 score = analysis.score,

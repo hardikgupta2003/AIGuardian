@@ -3,6 +3,7 @@ package dev.hardik.aiguardian.stt
 import android.content.Context
 import android.util.Log
 import dev.hardik.aiguardian.detection.TranscriptSegment
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,11 +19,16 @@ import javax.inject.Singleton
 
 @Singleton
 class VoskSTTEngine @Inject constructor(
-    private val context: Context
+    private val context: Context,
+    private val hub: TranscriptHub
 ) {
     private var model: Model? = null
     private var recognizer: Recognizer? = null
+    private val recognizerLock = Any()
     private var lastPartial = ""
+    private var droppedSegments = 0
+    private var lastDropLogAtMs = 0L
+    private var audioBytesProcessed: Long = 0
 
     private val _isModelReady = MutableStateFlow(false)
     val isModelReady: StateFlow<Boolean> = _isModelReady.asStateFlow()
@@ -33,7 +39,13 @@ class VoskSTTEngine @Inject constructor(
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
-    private val _transcriptionFlow = MutableSharedFlow<TranscriptSegment>(extraBufferCapacity = 16)
+    // IMPORTANT: Never allow STT emission to block the audio capture loop.
+    // If collectors are slow, drop oldest segments rather than suspending.
+    private val _transcriptionFlow = MutableSharedFlow<TranscriptSegment>(
+        replay = 0,
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     val transcriptionFlow = _transcriptionFlow.asSharedFlow()
 
     fun initModel(modelPath: String = "model-en-in", onComplete: (Boolean) -> Unit) {
@@ -67,42 +79,73 @@ class VoskSTTEngine @Inject constructor(
     }
 
     fun startRecognition() {
-        model?.let {
-            recognizer = Recognizer(it, 16000.0f).apply {
+        val activeModel = model
+        if (activeModel == null) {
+            android.util.Log.w("AIGuardianDebug", "STT_ERROR: startRecognition called before model is ready")
+            return
+        }
+
+        synchronized(recognizerLock) {
+            recognizer?.close()
+            recognizer = Recognizer(activeModel, 16000.0f).apply {
                 setMaxAlternatives(3)
                 setWords(true)
             }
-            lastPartial = ""
-            android.util.Log.d("AIGuardianDebug", "STT: Recognizer started (maxAlt=3, words=true)")
+            audioBytesProcessed = 0
         }
+        lastPartial = ""
+        android.util.Log.d("AIGuardianDebug", "STT: Recognizer started (maxAlt=3, words=true)")
     }
 
-    suspend fun processAudioChunk(data: ByteArray, length: Int) {
-        recognizer?.let {
-            if (it.acceptWaveForm(data, length)) {
-                emitTranscript(it.result, isFinal = true)
+    /**
+     * Must be fast and non-blocking (called from the real-time AudioRecord loop).
+     */
+    fun processAudioChunk(data: ByteArray, length: Int) {
+        if (length <= 0) return
+
+        synchronized(recognizerLock) {
+            val activeRecognizer = recognizer ?: return
+            audioBytesProcessed += length.toLong()
+            if (activeRecognizer.acceptWaveForm(data, length)) {
+                emitTranscript(activeRecognizer.result, isFinal = true)
             } else {
-                emitTranscript(it.partialResult, isFinal = false)
+                emitTranscript(activeRecognizer.partialResult, isFinal = false)
             }
         }
     }
 
     fun stopRecognition() {
-        recognizer?.finalResult?.let { finalResult ->
+        val localRecognizer: Recognizer?
+        val hadAudio: Boolean
+        synchronized(recognizerLock) {
+            localRecognizer = recognizer
+            hadAudio = audioBytesProcessed > 0
+            recognizer = null
+            audioBytesProcessed = 0
+        }
+
+        if (localRecognizer != null && hadAudio) {
+            // IMPORTANT: Vosk native code can abort the process if FinalResult() is called while audio feeding
+            // is still happening. We avoid that by nulling the shared recognizer under lock first.
+            val finalResult = localRecognizer.finalResult
             val text = extractText(finalResult, isFinal = true)
             if (text.isNotBlank()) {
-                _transcriptionFlow.tryEmit(TranscriptSegment(text = text, isFinal = true))
+                val segment = TranscriptSegment(text = text, isFinal = true)
+                _transcriptionFlow.tryEmit(segment)
+                hub.tryEmit(segment)
             }
         }
-        recognizer?.close()
-        recognizer = null
+
+        runCatching { localRecognizer?.close() }
         lastPartial = ""
         android.util.Log.d("AIGuardianDebug", "STT: Recognizer stopped")
     }
 
-    private suspend fun emitTranscript(rawJson: String, isFinal: Boolean) {
+    private fun emitTranscript(rawJson: String, isFinal: Boolean) {
         // RADICAL FORENSIC LOG: Print exactly what Vosk returned before any parsing
-        android.util.Log.v("AIGuardianDebug", "STT_RAW: $rawJson")
+        if (Log.isLoggable("AIGuardianDebug", Log.VERBOSE)) {
+            android.util.Log.v("AIGuardianDebug", "STT_RAW: $rawJson")
+        }
 
         val text = extractText(rawJson, isFinal)
         if (text.isBlank()) return
@@ -116,7 +159,22 @@ class VoskSTTEngine @Inject constructor(
             android.util.Log.d("AIGuardianDebug", "STT_RESULT: [Partial] $text")
         }
 
-        _transcriptionFlow.emit(TranscriptSegment(text = text, isFinal = isFinal))
+        val segment = TranscriptSegment(text = text, isFinal = isFinal)
+        val emitted = _transcriptionFlow.tryEmit(segment)
+        if (!emitted) {
+            droppedSegments += 1
+            val now = System.currentTimeMillis()
+            if (now - lastDropLogAtMs > 5000) {
+                android.util.Log.w(
+                    "AIGuardianDebug",
+                    "STT_DROP: Dropping transcript segments (dropped=$droppedSegments). Collector too slow."
+                )
+                lastDropLogAtMs = now
+                droppedSegments = 0
+            }
+        }
+
+        hub.tryEmit(segment)
     }
 
     private fun extractText(rawJson: String, isFinal: Boolean): String {

@@ -15,6 +15,7 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import dev.hardik.aiguardian.R
+import dev.hardik.aiguardian.stt.AndroidSpeechRecognizerEngine
 import dev.hardik.aiguardian.stt.VoskSTTEngine
 import dev.hardik.aiguardian.detection.ScamDetector
 import dev.hardik.aiguardian.utils.Constants
@@ -35,10 +36,14 @@ class AudioCaptureService : Service() {
     lateinit var sttEngine: VoskSTTEngine
 
     @Inject
+    lateinit var speechEngine: AndroidSpeechRecognizerEngine
+
+    @Inject
     lateinit var scamDetector: ScamDetector
 
     private var audioRecord: AudioRecord? = null
     private var isRecording = false
+    private var usingSpeechRecognizer = false
     private var recordingJob: Job? = null
     private val serviceScope = CoroutineScope(Dispatchers.IO)
 
@@ -69,19 +74,40 @@ class AudioCaptureService : Service() {
     private fun startRecording() {
         if (isRecording) return
         
-        android.util.Log.d("AIGuardianDebug", "PIPELINE: Initializing AudioRecord")
-        val bufferSize = AudioRecord.getMinBufferSize(
-            16000,
-            AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT
-        )
+        android.util.Log.d("AIGuardianDebug", "PIPELINE: Starting audio monitoring pipeline")
 
-        audioRecord = AudioRecord(
-            MediaRecorder.AudioSource.VOICE_RECOGNITION,
-            16000,
-            AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT,
-            bufferSize
+        // Prefer Android SpeechRecognizer for best accuracy (uses Google speech service when available).
+        // It captures audio internally, so we do not run our own AudioRecord loop.
+        if (speechEngine.isAvailable()) {
+            usingSpeechRecognizer = true
+            isRecording = true
+            android.util.Log.i("AIGuardianDebug", "PIPELINE: Using SpeechRecognizer backend (best accuracy)")
+            speechEngine.start(preferOffline = true, languageTag = "en-IN")
+            scamDetector.startMonitoring()
+            return
+        }
+
+        usingSpeechRecognizer = false
+        android.util.Log.i("AIGuardianDebug", "PIPELINE: SpeechRecognizer unavailable; falling back to Vosk (PCM)")
+        val sampleRateHz = 16000
+        val channelConfig = AudioFormat.CHANNEL_IN_MONO
+        val encoding = AudioFormat.ENCODING_PCM_16BIT
+
+        val minBufferSize = AudioRecord.getMinBufferSize(sampleRateHz, channelConfig, encoding)
+        if (minBufferSize == AudioRecord.ERROR || minBufferSize == AudioRecord.ERROR_BAD_VALUE) {
+            android.util.Log.e("AIGuardianDebug", "PIPELINE_ERROR: getMinBufferSize failed: $minBufferSize")
+            stopSelf()
+            return
+        }
+
+        // A slightly larger buffer reduces underruns when downstream processing spikes.
+        val bufferSize = minBufferSize.coerceAtLeast(sampleRateHz / 2) * 2
+
+        audioRecord = createAudioRecord(
+            sampleRateHz = sampleRateHz,
+            channelConfig = channelConfig,
+            encoding = encoding,
+            bufferSize = bufferSize
         )
 
         if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
@@ -109,6 +135,7 @@ class AudioCaptureService : Service() {
             while (isRecording) {
                 val read = audioRecord?.read(buffer, 0, buffer.size) ?: 0
                 if (read > 0) {
+                    // Non-suspending; must not block the AudioRecord loop.
                     sttEngine.processAudioChunk(buffer, read)
                     
                     val now = System.currentTimeMillis()
@@ -123,17 +150,57 @@ class AudioCaptureService : Service() {
         }
     }
 
+    private fun createAudioRecord(
+        sampleRateHz: Int,
+        channelConfig: Int,
+        encoding: Int,
+        bufferSize: Int
+    ): AudioRecord? {
+        val sources = listOf(
+            MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+            MediaRecorder.AudioSource.MIC
+        )
+
+        for (source in sources) {
+            val record = runCatching {
+                AudioRecord(
+                    source,
+                    sampleRateHz,
+                    channelConfig,
+                    encoding,
+                    bufferSize
+                )
+            }.getOrNull()
+
+            if (record?.state == AudioRecord.STATE_INITIALIZED) {
+                android.util.Log.i("AIGuardianDebug", "PIPELINE: AudioRecord initialized (source=$source)")
+                return record
+            }
+
+            runCatching { record?.release() }
+        }
+
+        return null
+    }
+
     private fun stopRecording() {
         if (!isRecording) return
         isRecording = false
         recordingJob?.cancel()
-        runCatching {
-            audioRecord?.stop()
-            audioRecord?.release()
+        if (usingSpeechRecognizer) {
+            speechEngine.stop()
+            scamDetector.stopMonitoring()
+            usingSpeechRecognizer = false
+        } else {
+            runCatching {
+                audioRecord?.stop()
+                audioRecord?.release()
+            }
+            audioRecord = null
+            sttEngine.stopRecognition()
+            scamDetector.stopMonitoring()
         }
-        audioRecord = null
-        sttEngine.stopRecognition()
-        scamDetector.stopMonitoring()
         Log.d("AudioCaptureService", "Recording pipeline stopped")
     }
 

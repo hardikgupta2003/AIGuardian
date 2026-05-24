@@ -2,6 +2,8 @@ package dev.hardik.aiguardian.di
 
 import android.content.Context
 import dev.hardik.aiguardian.stt.VoskSTTEngine
+import dev.hardik.aiguardian.stt.AndroidSpeechRecognizerEngine
+import dev.hardik.aiguardian.stt.TranscriptHub
 
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
@@ -27,8 +29,17 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideVoskSTTEngine(@ApplicationContext context: Context): VoskSTTEngine {
-        return VoskSTTEngine(context)
+    fun provideVoskSTTEngine(@ApplicationContext context: Context, hub: TranscriptHub): VoskSTTEngine {
+        return VoskSTTEngine(context, hub)
+    }
+
+    @Provides
+    @Singleton
+    fun provideAndroidSpeechRecognizerEngine(
+        @ApplicationContext context: Context,
+        hub: TranscriptHub
+    ): AndroidSpeechRecognizerEngine {
+        return AndroidSpeechRecognizerEngine(context, hub)
     }
 
     @Provides
